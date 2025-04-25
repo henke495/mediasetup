@@ -241,7 +241,7 @@ fi
   if systemctl list-units --full -all | grep -q "^tdarr-server.service"; then
     echo "Tdarr Server service already exists. Skipping..."
   else
-    run_command "cat <<EOF > /etc/systemd/system/tdarr.service
+    run_command "cat <<EOF > /etc/systemd/system/tdarr-server.service
 [Unit]
 Description=Tdarr Server
 After=network.target
