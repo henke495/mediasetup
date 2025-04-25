@@ -74,6 +74,9 @@ setup_group() {
   run_command "usermod -aG $GROUP $USER"
 }
 
+# Execute group add
+setup_group
+
 # Log output
 LOGFILE="/var/log/media-setup.log"
 exec > >(tee -a "$LOGFILE") 2>&1
@@ -92,17 +95,6 @@ validate_variables() {
 
 # Call validate_variables early in the script
 validate_variables
-
-# Fix heredoc blocks
-run_command "cat <<EOF > /etc/docker/daemon.json
-{
-  \"log-driver\": \"json-file\",
-  \"log-opts\": {
-    \"max-size\": \"${MAX_LOG_SIZE}m\",
-    \"max-file\": \"3\"
-  }
-}
-EOF"
 
 run_command "cat <<EOF > /etc/logrotate.d/media-services
 /var/log/jellyfin/*.log
@@ -142,6 +134,7 @@ if [ "$ENABLE_FORMAT_AND_PARTITIONING" = true ]; then
       run_command "mkfs.ext4 -F ${DRIVES[$i]}"
       run_command "mkdir -p \"${MOUNT_POINTS[$i]}\""
       run_command "mount \"${DRIVES[$i]}\" \"${MOUNT_POINTS[$i]}\""
+      run_command "mkdir -p \"$MERGERFS_POOL\""
     done
 
     run_command "apt-get update"
@@ -839,6 +832,17 @@ EOF"
 
 run_command "docker compose -f /opt/watchtower/docker-compose.yml up -d"
 fi
+
+# Fix heredoc blocks
+run_command "cat <<EOF > /etc/docker/daemon.json
+{
+  \"log-driver\": \"json-file\",
+  \"log-opts\": {
+    \"max-size\": \"${MAX_LOG_SIZE}m\",
+    \"max-file\": \"3\"
+  }
+}
+EOF"
 
 ### 13. Install Recyclarr ###
 # Install and configure Recyclarr for syncing custom formats and quality profiles.
