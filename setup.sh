@@ -570,15 +570,19 @@ if [ "$ENABLE_RADARR" = true ]; then
   | grep 'linux-core-x64.tar.gz' \
   | cut -d '"' -f 4)
 
-run_command "mkdir -p /opt/radarr"
-run_command "curl -L "$RADARR_URL" | tar xz -C /opt/radarr"
-run_command "ln -sf /opt/radarr/Radarr /usr/bin/radarr"
+  run_command "mkdir -p /opt/radarr"
+  run_command "curl -L \"$RADARR_URL\" | tar xz -C /opt/radarr"
+  run_command "ln -sf /opt/radarr/Radarr /usr/bin/radarr"
 
-if systemctl list-units --full -all | grep -q "^radarr.service"; then
-  echo "Radarr service already exists. Skipping..."
-else
-  # Create the Radarr service file
-run_command "cat <<EOF >/etc/systemd/system/radarr.service
+  # Set ownership and permissions
+  run_command "chown -R $USER:$GROUP /opt/radarr"
+  run_command "chmod -R 775 /opt/radarr"
+
+  if systemctl list-units --full -all | grep -q "^radarr.service"; then
+    echo "Radarr service already exists. Skipping..."
+  else
+    # Create the Radarr service file
+    run_command "cat <<EOF >/etc/systemd/system/radarr.service
 [Unit]
 Description=Radarr Daemon
 After=network.target
@@ -592,13 +596,10 @@ Group=$GROUP
 [Install]
 WantedBy=multi-user.target
 EOF"
-fi
+  fi
 
-run_command "chown -R $USER:$GROUP /opt/radarr"
-run_command "chmod -R g+rw /opt/radarr"
-
-run_command "systemctl daemon-reload"
-run_command "systemctl restart radarr"
+  run_command "systemctl daemon-reload"
+  run_command "systemctl enable --now radarr"
 fi
 
 if [ "$ENABLE_RADARR_HEALTHCHECK" = true ]; then
@@ -616,15 +617,19 @@ if [ "$ENABLE_PROWLARR" = true ]; then
   | grep 'linux-core-x64.tar.gz' \
   | cut -d '"' -f 4)
 
-run_command "mkdir -p /opt/prowlarr"
-run_command "curl -L "$PROWLARR_URL" | tar xz -C /opt/prowlarr"
-run_command "ln -sf /opt/prowlarr/Prowlarr /usr/bin/prowlarr"
+  run_command "mkdir -p /opt/prowlarr"
+  run_command "curl -L \"$PROWLARR_URL\" | tar xz -C /opt/prowlarr"
+  run_command "ln -sf /opt/prowlarr/Prowlarr /usr/bin/prowlarr"
 
-if systemctl list-units --full -all | grep -q "^prowlarr.service"; then
-  echo "Prowlarr service already exists. Skipping..."
-else
-  # Create the Prowlarr service file
-run_command "cat <<EOF >/etc/systemd/system/prowlarr.service
+  # Set ownership and permissions
+  run_command "chown -R $USER:$GROUP /opt/prowlarr"
+  run_command "chmod -R 775 /opt/prowlarr"
+
+  if systemctl list-units --full -all | grep -q "^prowlarr.service"; then
+    echo "Prowlarr service already exists. Skipping..."
+  else
+    # Create the Prowlarr service file
+    run_command "cat <<EOF >/etc/systemd/system/prowlarr.service
 [Unit]
 Description=Prowlarr Daemon
 After=network.target
@@ -639,12 +644,10 @@ Group=$GROUP
 WantedBy=multi-user.target
 EOF"
 
-run_command "chown -R $USER:$GROUP /opt/prowlarr"
-run_command "chmod -R g+rw /opt/prowlarr"
-
-run_command "systemctl daemon-reload"
-run_command "systemctl restart prowlarr"
   fi
+
+  run_command "systemctl daemon-reload"
+  run_command "systemctl enable --now prowlarr"
 fi
 
 if [ "$ENABLE_PROWLARR_HEALTHCHECK" = true ]; then

@@ -18,8 +18,8 @@ NGINX_NAME="yourserver"  # NGINX server name
 NGINX_SERVICES=("jellyfin" "jellyseerr" "netdata")  # Services to enable in NGINX
 
 # User and Group
-USER="youruser"  # Replace with the user to run services as
-GROUP="yourgroup"  # Replace with the group to run services as
+USER="root"  # Replace with the user to run services as
+GROUP="root"  # Replace with the group to run services as
 
 # Service Ports
 JELLYFIN_PORT=8096
@@ -42,6 +42,8 @@ ENABLE_NETDATA=true
 ENABLE_WATCHTOWER=true
 ENABLE_RECYCLARR=true
 ENABLE_FORMAT_AND_PARTITIONING=true
+ENABLE_DDNS=true  # Toggle for DDNS setup
+INSTALL_TDARR_ONEFLOW=true  # Toggle for Tdarr OneFlow installation
 
 # Health Checks
 ENABLE_JELLYFIN_HEALTHCHECK=true
@@ -54,8 +56,6 @@ ENABLE_FLARESOLVERR_HEALTHCHECK=true
 ENABLE_NETDATA_HEALTHCHECK=true
 
 # Miscellaneous
-TDARR_VERSION="2.17.01"
-TDARR_URL="https://storage.tdarr.io/versions/$TDARR_VERSION/linux_x64/Tdarr_Updater.zip"
 DDNS_SERVER="dynupdate.no-ip.com"
 DDNS_LOGIN="your_ddns_login"  # Replace with your DDNS login
 DDNS_PASSWORD="your_ddns_password"  # Replace with your DDNS password
