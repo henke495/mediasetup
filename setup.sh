@@ -238,18 +238,18 @@ if [ "$ENABLE_TDARR" = true ]; then
   run_command "./Tdarr_Updater"
 fi
 
-  if systemctl list-units --full -all | grep -q "^tdarr-server.service"; then
-    echo "Tdarr Server service already exists. Skipping..."
-  else
-    run_command "cat <<EOF > /etc/systemd/system/tdarr-server.service
+if systemctl list-units --full --all | grep -q "^tdarr-server.service"; then
+  echo "Tdarr Server service already exists. Skipping..."
+else
+  run_command "cat <<EOF | sudo tee /etc/systemd/system/tdarr-server.service > /dev/null
 [Unit]
 Description=Tdarr Server
 After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/opt/tdarr
-ExecStart=/opt/tdarr/Tdarr_Server
+WorkingDirectory=/opt/tdarr/Tdarr_Server
+ExecStart=/usr/bin/node /opt/tdarr/Tdarr_Server/Tdarr_Server.js
 Restart=always
 RestartSec=10
 User=$USER
@@ -258,20 +258,20 @@ Group=$GROUP
 [Install]
 WantedBy=multi-user.target
 EOF"
-  fi
+fi
 
-  if systemctl list-units --full -all | grep -q "^tdarr-node.service"; then
-    echo "Tdarr Node service already exists. Skipping..."
-  else
-    run_command "cat <<EOF > /etc/systemd/system/tdarr-node.service
+if systemctl list-units --full --all | grep -q "^tdarr-node.service"; then
+  echo "Tdarr Node service already exists. Skipping..."
+else
+  run_command "cat <<EOF | sudo tee /etc/systemd/system/tdarr-node.service > /dev/null
 [Unit]
 Description=Tdarr Node
 After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/opt/tdarr
-ExecStart=/opt/tdarr/Tdarr_Node
+WorkingDirectory=/opt/tdarr/Tdarr_Node
+ExecStart=/usr/bin/node /opt/tdarr/Tdarr_Node/Tdarr_Node.js
 Restart=always
 RestartSec=10
 User=$USER
@@ -280,13 +280,17 @@ Group=$GROUP
 [Install]
 WantedBy=multi-user.target
 EOF"
+fi
+
+  # Set correct ownership and permissions
   run_command "chown -R $USER:$GROUP /opt/tdarr"
   run_command "chmod -R g+rw /opt/tdarr"
 
+  # Reload systemd and enable services
   run_command "sudo systemctl daemon-reload"
   run_command "sudo systemctl enable tdarr-server"
   run_command "sudo systemctl enable tdarr-node"
-fi  # <-- Ensure this 'fi' properly closes the outer 'if' block
+fi
 
 if [ "$ENABLE_TDARR_HEALTHCHECK" = true ]; then
   echo "Adding Tdarr health check to crontab..."
