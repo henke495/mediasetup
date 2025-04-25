@@ -203,14 +203,68 @@ run_command "apt install -y curl gnupg lsb-release software-properties-common un
 # Install and configure Jellyfin, a media server for streaming content.
 if [ "$ENABLE_JELLYFIN" = true ]; then
   echo "Installing Jellyfin..."
-  run_command "apt-get install -y apt-transport-https"
-  run_command "curl -fsSL https://repo.jellyfin.org/install-debuntu.sh | bash"
-  run_command "apt-get update"
-  run_command "apt-get install -y jellyfin"
 
-  echo "Configuring Jellyfin port..."
-  run_command "sed -i 's|<Port>8096</Port>|<Port>$JELLYFIN_PORT</Port>|' /etc/jellyfin/system.xml"
-  run_command "systemctl restart jellyfin"
+  # Validate architecture
+  SUPPORTED_ARCHITECTURES="amd64 armhf arm64"
+  ARCHITECTURE=$(dpkg --print-architecture)
+  if ! echo "$SUPPORTED_ARCHITECTURES" | grep -qw "$ARCHITECTURE"; then
+    echo "[ERROR] Unsupported architecture: $ARCHITECTURE. Supported architectures are: $SUPPORTED_ARCHITECTURES."
+    exit 1
+  fi
+
+  # Determine OS and version
+  if [ ! -f /etc/os-release ]; then
+    echo "[ERROR] /etc/os-release not found. This script supports Debian-based distributions only."
+    exit 1
+  fi
+
+  . /etc/os-release
+  if [ "$ID" = "raspbian" ]; then
+    REPO_OS="debian"
+    VERSION="$VERSION_CODENAME"
+  elif [ "$ID" = "neon" ]; then
+    REPO_OS="ubuntu"
+    VERSION="$VERSION_CODENAME"
+  elif [ -n "$UBUNTU_CODENAME" ]; then
+    REPO_OS="ubuntu"
+    VERSION="$UBUNTU_CODENAME"
+  elif [ -n "$DEBIAN_CODENAME" ]; then
+    REPO_OS="debian"
+    VERSION="$DEBIAN_CODENAME"
+  else
+    echo "[ERROR] Unsupported OS: $ID. This script supports Debian and Ubuntu-based distributions only."
+    exit 1
+  fi
+
+  echo "Detected OS: $REPO_OS $VERSION, Architecture: $ARCHITECTURE"
+
+  # Add Jellyfin repository
+  echo "Adding Jellyfin repository..."
+  run_command "mkdir -p /etc/apt/keyrings"
+  run_command "curl -fsSL https://repo.jellyfin.org/jellyfin_team.gpg.key | gpg --dearmor -o /etc/apt/keyrings/jellyfin.gpg"
+  run_command "cat <<EOF > /etc/apt/sources.list.d/jellyfin.sources
+Types: deb
+URIs: https://repo.jellyfin.org/$REPO_OS
+Suites: $VERSION
+Components: main
+Architectures: $ARCHITECTURE
+Signed-By: /etc/apt/keyrings/jellyfin.gpg
+EOF"
+
+  # Update repositories and install Jellyfin
+  echo "Updating APT repositories..."
+  run_command "apt update"
+  echo "Installing Jellyfin..."
+  run_command "apt install -y jellyfin"
+
+  # Verify installation
+  echo "Verifying Jellyfin installation..."
+  if systemctl is-active --quiet jellyfin; then
+    echo "Jellyfin is running. Access it at http://localhost:$JELLYFIN_PORT"
+  else
+    echo "[ERROR] Jellyfin failed to start. Check the logs for details."
+    exit 1
+  fi
 fi
 
 if [ "$ENABLE_JELLYFIN_HEALTHCHECK" = true ]; then
@@ -223,19 +277,89 @@ fi
 ### 9. Install Tdarr ###
 # Install and configure Tdarr for media transcoding and optimization.
 if [ "$ENABLE_TDARR" = true ]; then
-  echo "Installing tdarr..."
-  
-  # Ensure wget is installed
-  run_command "apt-get install -y wget"
+  echo "Installing Tdarr..."
 
-  # Fetch the latest Tdarr release URL for Linux
-  run_command "mkdir -p /opt/tdarr && cd /opt/tdarr"
-  run_command "wget \"$TDARR_URL\" -O Tdarr.zip || { echo 'Failed to download Tdarr. Exiting...'; exit 1; }"
+  # Install dependencies
+  echo "Installing dependencies..."
+  run_command "apt-get install -y curl sudo mc handbrake-cli"
+  echo "Dependencies installed."
 
-  # Extract and set up Tdarr
-  run_command "unzip Tdarr.zip && rm Tdarr.zip"
+  # Set up hardware acceleration
+  echo "Setting up hardware acceleration..."
+  run_command "apt-get install -y va-driver-all ocl-icd-libopencl1 intel-opencl-icd vainfo intel-gpu-tools"
+  if [ -d "/dev/dri" ]; then
+    run_command "chgrp video /dev/dri"
+    run_command "chmod 755 /dev/dri"
+    run_command "chmod 660 /dev/dri/*"
+    run_command "adduser $USER video"
+    run_command "adduser $USER render"
+  fi
+  echo "Hardware acceleration set up."
+
+  # Install Tdarr
+  echo "Installing Tdarr..."
+  run_command "mkdir -p /opt/tdarr"
+  run_command "cd /opt/tdarr"
+  RELEASE=$(curl -s https://f000.backblazeb2.com/file/tdarrs/versions.json | grep -oP '(?<=\"Tdarr_Updater\": \")[^\"]+' | grep linux_x64 | head -n 1)
+  run_command "wget -q $RELEASE -O Tdarr_Updater.zip"
+  run_command "unzip Tdarr_Updater.zip"
+  run_command "rm -rf Tdarr_Updater.zip"
   run_command "chmod +x Tdarr_Updater"
-  run_command "./Tdarr_Updater"
+  run_command "./Tdarr_Updater &>/dev/null"
+  echo "Tdarr installed."
+
+  # Create systemd services
+  echo "Creating Tdarr services..."
+  run_command "cat <<EOF > /etc/systemd/system/tdarr-server.service
+[Unit]
+Description=Tdarr Server Daemon
+After=network.target
+
+[Service]
+User=$USER
+Group=$GROUP
+Type=simple
+WorkingDirectory=/opt/tdarr/Tdarr_Server
+ExecStartPre=/opt/tdarr/Tdarr_Updater
+ExecStart=/opt/tdarr/Tdarr_Server/Tdarr_Server
+TimeoutStopSec=20
+KillMode=process
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+EOF"
+
+  run_command "cat <<EOF > /etc/systemd/system/tdarr-node.service
+[Unit]
+Description=Tdarr Node Daemon
+After=network.target
+Requires=tdarr-server.service
+
+[Service]
+User=$USER
+Group=$GROUP
+Type=simple
+WorkingDirectory=/opt/tdarr/Tdarr_Node
+ExecStart=/opt/tdarr/Tdarr_Node/Tdarr_Node
+TimeoutStopSec=20
+KillMode=process
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+EOF"
+
+  run_command "systemctl daemon-reload"
+  run_command "systemctl enable --now tdarr-server.service"
+  run_command "systemctl enable --now tdarr-node.service"
+  echo "Tdarr services created and started."
+
+  # Clean up
+  echo "Cleaning up..."
+  run_command "apt-get -y autoremove"
+  run_command "apt-get -y autoclean"
+  echo "Clean up complete."
 fi
 
 if systemctl list-units --full --all | grep -q "^tdarr-server.service"; then
@@ -321,40 +445,114 @@ run_command "apt install -y curl gnupg ca-certificates apt-transport-https"
 # Sonarr
 if [ "$ENABLE_SONARR" = true ]; then
   echo "Installing Sonarr..."
-  SONARR_URL=$(curl -s https://api.github.com/repos/Sonarr/Sonarr/releases/latest \
-  | grep browser_download_url \
-  | grep 'linux-x64.tar.gz' \
-  | cut -d '"' -f 4)
+  app="sonarr"
+  app_port="8989"
+  app_prereq="curl sqlite3 wget"
+  app_umask="0002"
+  branch="main"
 
-run_command "mkdir -p /opt/sonarr"
-run_command "curl -L "$SONARR_URL" | tar xz -C /opt/sonarr"
-run_command "ln -sf /opt/sonarr/Sonarr /usr/bin/sonarr"
-fi
+  # Constants
+  installdir="/opt"              # Install Location
+  bindir="${installdir}/${app^}" # Full Path to Install Location
+  datadir="/var/lib/$app/"       # AppData directory to use
+  app_bin=${app^}                # Binary Name of the app
 
-if systemctl list-units --full -all | grep -q "^sonarr.service"; then
-  echo "Sonarr service already exists. Skipping..."
-else
+  # Stop the App if running
+  if service --status-all | grep -Fq "$app"; then
+    run_command "systemctl stop $app"
+    run_command "systemctl disable $app.service"
+    echo "Stopped existing $app"
+  fi
 
-run_command "cat <<EOF >/etc/systemd/system/sonarr.service
+  # Create AppData Directory
+  run_command "mkdir -p $datadir"
+  run_command "chown -R $USER:$GROUP $datadir"
+  run_command "chmod 775 $datadir"
+  echo "Directories created"
+
+  # Install prerequisite packages
+  echo "Installing pre-requisite packages..."
+  run_command "apt update && apt install -y $app_prereq"
+
+  # Determine architecture and download the appropriate binary
+  ARCH=$(dpkg --print-architecture)
+  dlbase="https://services.sonarr.tv/v1/download/$branch/latest?version=4&os=linux"
+  case "$ARCH" in
+    "amd64") DLURL="${dlbase}&arch=x64" ;;
+    "armhf") DLURL="${dlbase}&arch=arm" ;;
+    "arm64") DLURL="${dlbase}&arch=arm64" ;;
+    *)
+      echo "[ERROR] Unsupported architecture: $ARCH"
+      exit 1
+      ;;
+  esac
+
+  echo "Downloading Sonarr from: $DLURL"
+  run_command "wget -O Sonarr.tar.gz \"$DLURL\""
+  if [ $? -ne 0 ]; then
+    echo "[ERROR] Failed to download Sonarr. Exiting..."
+    exit 1
+  fi
+
+  # Verify the downloaded file is a valid tar.gz
+  if ! file Sonarr.tar.gz | grep -q "gzip compressed data"; then
+    echo "[ERROR] The downloaded file is not a valid tar.gz. Please check the URL or the server response."
+    exit 1
+  fi
+
+  # Extract the downloaded file
+  echo "Extracting Sonarr..."
+  run_command "tar -xvzf Sonarr.tar.gz"
+  if [ $? -ne 0 ]; then
+    echo "[ERROR] Failed to extract Sonarr. Exiting..."
+    exit 1
+  fi
+
+  # Remove existing installation and install the new version
+  echo "Removing existing installation..."
+  run_command "rm -rf $bindir"
+  echo "Installing Sonarr..."
+  run_command "mv ${app^} $installdir"
+  run_command "chown -R $USER:$GROUP $bindir"
+  run_command "chmod 775 $bindir"
+  run_command "rm -rf Sonarr.tar.gz"
+  run_command "touch $datadir/update_required"
+  run_command "chown $USER:$GROUP $datadir/update_required"
+  echo "Sonarr installed"
+
+  # Configure Autostart
+  echo "Creating service file for Sonarr..."
+  run_command "cat <<EOF > /etc/systemd/system/$app.service
 [Unit]
-Description=Sonarr Daemon
-After=network.target
-
+Description=${app^} Daemon
+After=syslog.target network.target
 [Service]
-ExecStart=/opt/sonarr/Sonarr --port=$SONARR_PORT
-Restart=on-failure
 User=$USER
 Group=$GROUP
-
+UMask=$app_umask
+Type=simple
+ExecStart=$bindir/$app_bin -nobrowser -data=$datadir
+TimeoutStopSec=20
+KillMode=process
+Restart=on-failure
 [Install]
 WantedBy=multi-user.target
 EOF"
 
-run_command "chown -R $USER:$GROUP /opt/sonarr"
-run_command "chmod -R g+rw /opt/sonarr"
+  # Start the App
+  echo "Starting Sonarr..."
+  run_command "systemctl daemon-reload"
+  run_command "systemctl enable --now $app"
 
-run_command "systemctl daemon-reload"
-run_command "systemctl restart sonarr"
+  # Verify installation
+  host=$(hostname -I)
+  ip_local=$(grep -oP '^\S*' <<<"$host")
+  STATUS="$(systemctl is-active "$app")"
+  if [ "$STATUS" = "active" ]; then
+    echo "Sonarr is running. Access it at http://$ip_local:$app_port"
+  else
+    echo "[ERROR] Sonarr failed to start"
+  fi
 fi
 
 if [ "$ENABLE_SONARR_HEALTHCHECK" = true ]; then
