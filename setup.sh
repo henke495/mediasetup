@@ -282,15 +282,12 @@ WantedBy=multi-user.target
 EOF"
 fi
 
-  # Set correct ownership and permissions
   run_command "chown -R $USER:$GROUP /opt/tdarr"
   run_command "chmod -R g+rw /opt/tdarr"
 
-  # Reload systemd and enable services
   run_command "sudo systemctl daemon-reload"
   run_command "sudo systemctl enable tdarr-server"
   run_command "sudo systemctl enable tdarr-node"
-fi
 
 if [ "$ENABLE_TDARR_HEALTHCHECK" = true ]; then
   echo "Adding Tdarr health check to crontab..."
