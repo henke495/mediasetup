@@ -879,27 +879,29 @@ select opt in \"Jellyfin\" \"Tdarr\" \"Sonarr\" \"Radarr\" \"qBittorrent\" \"Pro
     \"Flaresolverr\") docker ps | grep flaresolverr;;
     \"Watchtower\") docker ps | grep watchtower;;
     \"Open Web UI\")
-  echo \"Select a service to open:\"
-  select service in \"Jellyfin\" \"Sonarr\" \"Radarr\" \"Prowlarr\" \"Jellyseerr\" \"NetData\" \"Exit\"; do
-    case \$service in
-      \"Jellyfin\") xdg-open http://localhost:$JELLYFIN_PORT;;
-      \"Sonarr\") xdg-open http://localhost:$SONARR_PORT;;
-      \"Radarr\") xdg-open http://localhost:$RADARR_PORT;;
-      \"Prowlarr\") xdg-open http://localhost:$PROWLARR_PORT;;
-      \"Jellyseerr\") xdg-open http://localhost:$JELLYSEERR_PORT;;
-      \"NetData\") xdg-open http://localhost:$NETDATA_PORT;;
-      \"Exit\") break;;
-      *) echo \"Invalid option.\";;
-    esac
-  done
-  ;;
+      echo \"Select a service to open:\"
+      select service in \"Jellyfin\" \"Sonarr\" \"Radarr\" \"Prowlarr\" \"Jellyseerr\" \"NetData\" \"Exit\"; do
+        case \$service in
+          \"Jellyfin\") xdg-open http://localhost:$JELLYFIN_PORT;;
+          \"Sonarr\") xdg-open http://localhost:$SONARR_PORT;;
+          \"Radarr\") xdg-open http://localhost:$RADARR_PORT;;
+          \"Prowlarr\") xdg-open http://localhost:$PROWLARR_PORT;;
+          \"Jellyseerr\") xdg-open http://localhost:$JELLYSEERR_PORT;;
+          \"NetData\") xdg-open http://localhost:$NETDATA_PORT;;
+          \"Exit\") break;;
+          *) echo \"Invalid option.\";;
+        esac
+      done
+      ;;
     \"Restart Service\") read -p \"Service name: \" sname; systemctl restart \"\$sname\";;
-    \"Check Services\") /usr/local/bin/media-setup --check-services;;
+    \"Check Services\") echo \"Checking services...\"; systemctl list-units --type=service --state=running;;
     \"Exit\") break;;
     *) echo \"Invalid option.\";;
   esac
 done
 EOF"
+
+# Make the script executable
 run_command "chmod +x /usr/local/bin/media-setup"
 
 ### 17. Final Steps ###
